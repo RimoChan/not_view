@@ -10,6 +10,7 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 from rimo_utils import matrix
 from rimo_utils import cv0
+from rimo_utils import 计时
 
 import 窗口
 
@@ -18,46 +19,78 @@ import 窗口
 
 glfw.init()
 
+window = None
+图 = None
+
 窗口大小 = None
 中心 = None
 当前窗口大小 = None
 显示器大小 = glfw.get_video_mode(glfw.get_primary_monitor()).size
+全屏 = False
 
 
 def 生成opengl纹理(npdata):
-    w, h = npdata.shape[:2]
+    w, h, 通道数 = npdata.shape
     d = 2**int(max(math.log2(w), math.log2(h)) + 1)
-    纹理 = np.zeros([d, d, 4], dtype=npdata.dtype)
-    纹理[:, :, :3] = 1
+    纹理 = np.zeros([d, d, 通道数], dtype=npdata.dtype)
     纹理[:w, :h] = npdata
     纹理座标 = (w / d, h / d)
 
     width, height = 纹理.shape[:2]
     纹理编号 = glGenTextures(1)
     glBindTexture(GL_TEXTURE_2D, 纹理编号)
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_BGRA, GL_FLOAT, 纹理)
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-    glGenerateMipmap(GL_TEXTURE_2D)
+    if 通道数 == 3:
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_BGR, GL_UNSIGNED_BYTE, 纹理)
+    if 通道数 == 4:
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_BGRA, GL_UNSIGNED_BYTE, 纹理)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
 
     return 纹理编号, 纹理座标
 
 
-def 设定大小(window, x, y):
+def 夹(a, x, b):
+    if x < a:
+        return a
+    if x > b:
+        return b
+    return x
+
+
+def 设定大小(x, y):
     width, height = glfw.get_window_size(window)
     left, top = glfw.get_window_pos(window)
     中心 = left+width/2, top+height/2
-    glViewport(0, 0, x, y)
+
+    y1, x1 = 图.shape[:2]
+    if x1/y1 < x/y:
+        xx = int(y/y1*x1)
+        glViewport((x-xx)//2, 0, xx, y)
+    else:
+        yy = int(x/x1*y1)
+        glViewport(0, (y-yy)//2, x, yy)
+
+    height = min(y, 显示器大小.height)
+    width = min(x, 显示器大小.width)
+    if glfw.get_window_attrib(window, glfw.DECORATED):
+        ymin = 38
+    else:
+        ymin = 0
+
+    xmax = 显示器大小.width - width
+    ymax = 显示器大小.height - height
+
     glfw.set_window_monitor(window, None,
-                            xpos=max(0, int(中心[0] - x/2)),
-                            ypos=max(38, int(中心[1] - y/2)),
-                            width=x,
-                            height=min(y, 显示器大小.height),
+                            xpos=夹(0, int(中心[0] - x/2), xmax),
+                            ypos=夹(ymin, int(中心[1] - y/2), ymax),
+                            width=width,
+                            height=height,
                             refresh_rate=glfw.DONT_CARE
                             )
 
 
-def opengl绘图循环(window, 图):
-    纹理编号, 纹理座标 = 生成opengl纹理(图)
+def opengl绘图循环():
+    with 计时.计时('生成纹理'):
+        纹理编号, 纹理座标 = 生成opengl纹理(图)
 
     glClearColor(0, 0, 0, 0)
 
@@ -86,6 +119,8 @@ def opengl绘图循环(window, 图):
         glfw.swap_buffers(window)
 
     def scroll_callback(_, __, b):
+        if 全屏:
+            return
         global 窗口大小
         if b > 0:
             窗口大小 *= 1.15
@@ -95,27 +130,53 @@ def opengl绘图循环(window, 图):
             窗口大小 = np.array([220, 220/窗口大小[0]*窗口大小[1]])
     glfw.set_scroll_callback(window, scroll_callback)
 
+    with 计时.计时('第一次画图'):
+        画图()
+
+    def key_callback(_, key, __, 方向, ___):
+        window.key_callback(_, key, __, 方向, ___)
+        if 方向 != 1:
+            return
+        # enter
+        if key == 257:
+            全屏切换()
+    glfw.set_key_callback(window, key_callback)
+
     global 当前窗口大小
     当前窗口大小 = 窗口大小.copy()
-    画图()
+
     while not glfw.window_should_close(window):
         glfw.poll_events()
         time.sleep(0.01)
-        if 0.9999 < 窗口大小[0]/当前窗口大小[0] < 1.0001:
+        if 全屏:
+            目标大小 = np.array([显示器大小.width, 显示器大小.height])
+        else:
+            目标大小 = 窗口大小
+        if 0.9999 < 目标大小[0]/当前窗口大小[0] < 1.0001:
             continue
-        当前窗口大小 = 当前窗口大小*0.6 + 窗口大小*0.4
-        设定大小(window, *当前窗口大小.astype(int))
+        当前窗口大小 = 当前窗口大小*0.6 + 目标大小*0.4
+        设定大小(*当前窗口大小.astype(int))
         画图()
 
 
-def fare(名字):
-    global 窗口大小
-    图 = cv0.read(名字).astype(np.float32)/255
-    if len(图.shape) == 2:
-        图 = np.concatenate([图.reshape(*图.shape, 1)]*3, axis=2)
-    x, y, 通道数 = 图.shape
-    if 通道数 == 3:
-        图 = np.concatenate([图, np.ones(shape=[x, y, 1])], axis=2)
+def 全屏切换():
+    global 全屏
+    全屏 = not 全屏
+    if 全屏:
+        glfw.set_window_attrib(window, glfw.DECORATED, False)
+    else:
+        glfw.set_window_attrib(window, glfw.DECORATED, True)
+
+
+def fare(名字='自慰直播.jpg'):
+    global 窗口大小, window, 图
+
+    with 计时.计时('读图'):
+        图 = cv0.read(名字)
+    with 计时.计时('修改通道'):
+        if len(图.shape) == 2:
+            图 = np.concatenate([图.reshape(*图.shape, 1)]*3, axis=2)
+        x, y, _ = 图.shape
 
     窗口大小 = np.array([y, x], dtype=np.float64)
     if 窗口大小[0] < 220:
@@ -134,9 +195,9 @@ def fare(名字):
     glEnable(GL_TEXTURE_2D)
     glEnable(GL_BLEND)
     glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
-    设定大小(window, *窗口大小.astype(int))
+    设定大小(*窗口大小.astype(int))
 
-    opengl绘图循环(window, 图)
+    opengl绘图循环()
 
 
 fire.Fire(fare)
