@@ -3,14 +3,13 @@ import os
 import math
 from pathlib import Path
 
+import fire
 import numpy as np
 import glfw
 from OpenGL.GL import *
 from OpenGL.GLU import *
-import fire
-
-from utils import matrix
-from utils import cv0
+from rimo_utils import matrix
+from rimo_utils import cv0
 
 import 窗口
 

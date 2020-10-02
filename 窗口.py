@@ -1,9 +1,9 @@
 import glfw
-
-from utils import cv0
+from rimo_utils import cv0
 
 
 glfw.init()
+
 
 def 图标(path):
     图标 = cv0.read(str(path))
@@ -12,26 +12,27 @@ def 图标(path):
     return [y, x, 图标]
 
 
-def 新建窗口(尺寸, 标题, 图标路径=None):
+def 新建窗口(尺寸, 标题, 图标路径=None, 内置按键回调=True):
     glfw.window_hint(glfw.TRANSPARENT_FRAMEBUFFER, True)
     glfw.window_hint(glfw.RESIZABLE, False)
     glfw.window_hint(glfw.FLOATING, True)
     window = glfw.create_window(*尺寸, 标题, None, None)
     
-    if 图标:
+    if 图标路径:
         glfw.set_window_icon(window, 1, 图标(图标路径))
 
-    def key_callback(window, key, _, 方向, __):
-        if 方向 != 1:
-            return
-        d = {
-            'D': glfw.DECORATED,
-            'F': glfw.FLOATING,
-        }
-        if chr(key) in d:
-            flag = d[chr(key)]
-            t = glfw.get_window_attrib(window, flag)
-            glfw.set_window_attrib(window, flag, not t)
-    glfw.set_key_callback(window, key_callback)
+    if 内置按键回调:
+        def key_callback(window, key, _, 方向, __):
+            if 方向 != 1:
+                return
+            d = {
+                'D': glfw.DECORATED,
+                'F': glfw.FLOATING,
+            }
+            if chr(key) in d:
+                flag = d[chr(key)]
+                t = glfw.get_window_attrib(window, flag)
+                glfw.set_window_attrib(window, flag, not t)
+        glfw.set_key_callback(window, key_callback)
 
     return window
