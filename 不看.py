@@ -168,7 +168,7 @@ def 全屏切换():
         glfw.set_window_attrib(window, glfw.DECORATED, True)
 
 
-def fare(名字='自慰直播.jpg'):
+def fare(名字):
     global 窗口大小, window, 图
 
     with 计时.计时('读图'):
